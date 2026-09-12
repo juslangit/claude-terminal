@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>claude-terminal</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="bar">
+    <button id="sessions-btn" title="Sessions">☰</button>
+    <span id="title">claude-terminal</span>
+    <span id="status" data-state="connecting">connecting</span>
+  </header>
+
+  <div id="term"></div>
+
+  <div id="panel" hidden>
+    <div class="panel-inner">
+      <h2>Sessions</h2>
+      <ul id="session-list"></ul>
+      <div class="row">
+        <input id="new-cwd" placeholder="working directory (blank = home)" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="row">
+        <button id="new-shell">New shell</button>
+        <button id="new-claude">New Claude session</button>
+      </div>
+      <button id="close-panel" class="ghost">Close</button>
+    </div>
+  </div>
+
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script src="vendor/addon-webgl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

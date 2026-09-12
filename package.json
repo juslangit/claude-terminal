@@ -1,0 +1,13 @@
+{
+  "name": "claude-terminal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A real terminal on your phone, attached to your own computer",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

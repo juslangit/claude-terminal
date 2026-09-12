@@ -42,6 +42,8 @@ class Client {
   get plain() { return this.text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b[()][B0]/g, ''); }
   clear() { this.bytes = []; }
   type(str) { this.ws.send(new TextEncoder().encode(str)); }
+  /** Type one character per message, as a real keyboard does. */
+  typeKeys(str) { for (const ch of str) this.ws.send(new TextEncoder().encode(ch)); }
   raw(...codes) { this.ws.send(new Uint8Array(codes)); }
   control(msg) { this.ws.send(JSON.stringify(msg)); }
   close() { this.ws.close(); }
@@ -117,6 +119,23 @@ try {
   c.type('printf "UTF=café→✓\\n"\r');
   await sleep(900);
   check('utf-8 round trip', c.plain.includes('café→✓'));
+
+  // 7b — keystrokes sent one message at a time keep their order. Real typing
+  // produces one message per character; sending a whole string at once (as the
+  // checks above do) hides any ordering bug.
+  c.clear();
+  c.typeKeys('echo hello_from_browser\r');
+  await sleep(1400);
+  check('per-character typing keeps order', c.plain.includes('hello_from_browser'),
+        JSON.stringify(/hello_\S*/.exec(c.plain)?.[0] ?? c.plain.slice(-60)));
+
+  // 7c — a long fast burst, the stress case for the write queue
+  c.clear();
+  const burst = 'echo ' + 'abcdefghijklmnopqrstuvwxyz0123456789'.repeat(3);
+  c.typeKeys(burst + '\r');
+  await sleep(2200);
+  check('fast burst keeps order', c.plain.includes('abcdefghijklmnopqrstuvwxyz0123456789'.repeat(3)),
+        JSON.stringify(c.plain.split('\n').find((l) => l.includes('abcdef'))?.slice(0, 70) ?? 'not found'));
 
   // 8 — Ctrl-C interrupts
   c.clear();

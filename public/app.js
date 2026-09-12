@@ -20,7 +20,6 @@ const state = {
   fit: null,
   reconnectDelay: 500,
   reconnectTimer: null,
-  closing: false,
 };
 
 // --- terminal ----------------------------------------------------------------
@@ -102,7 +101,16 @@ function setStatus(text, stateName) {
 }
 
 function connect(sessionId) {
-  if (state.ws) { state.closing = true; state.ws.close(); state.closing = false; }
+  // Detach the old socket completely before closing it. A shared "we meant to
+  // close this" flag does not work: close() resolves asynchronously, so by the
+  // time the old socket's onclose fires the flag has already been cleared and
+  // the reconnect logic drags the view back to the previous session.
+  if (state.ws) {
+    const old = state.ws;
+    old.onopen = old.onmessage = old.onerror = old.onclose = null;
+    try { old.close(); } catch { /* already gone */ }
+    state.ws = null;
+  }
   clearTimeout(state.reconnectTimer);
 
   state.sessionId = sessionId;
@@ -115,6 +123,7 @@ function connect(sessionId) {
   state.ws = ws;
 
   ws.onopen = () => {
+    if (state.ws !== ws) return;
     state.reconnectDelay = 500;
     setStatus('connected', 'open');
     doFit();
@@ -122,6 +131,7 @@ function connect(sessionId) {
   };
 
   ws.onmessage = (ev) => {
+    if (state.ws !== ws) return;
     if (typeof ev.data === 'string') {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
@@ -136,7 +146,8 @@ function connect(sessionId) {
   };
 
   ws.onclose = () => {
-    if (state.closing) return;
+    // Only the socket we still consider current may drive a reconnect.
+    if (state.ws !== ws) return;
     setStatus('reconnecting', 'closed');
     // The session keeps running on the computer, so reconnecting picks it up
     // exactly where it was.
@@ -144,7 +155,7 @@ function connect(sessionId) {
     state.reconnectDelay = Math.min(state.reconnectDelay * 2, 8000);
   };
 
-  ws.onerror = () => setStatus('error', 'closed');
+  ws.onerror = () => { if (state.ws === ws) setStatus('error', 'closed'); };
 }
 
 // --- sessions ----------------------------------------------------------------

@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Terminal">
+<meta name="theme-color" content="#14110e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>claude-terminal</title>
 <link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="style.css">
@@ -16,6 +23,29 @@
 
   <div id="term"></div>
 
+  <!-- The keys iOS does not give you. Without these a terminal is unusable on a
+       phone: no Esc, no Ctrl, no Tab, no arrows. -->
+  <div id="keybar">
+    <button data-key="esc">esc</button>
+    <button data-mod="ctrl">ctrl</button>
+    <button data-mod="alt">alt</button>
+    <button data-key="tab">tab</button>
+    <button data-key="up">↑</button>
+    <button data-key="down">↓</button>
+    <button data-key="left">←</button>
+    <button data-key="right">→</button>
+    <button data-send="\u0003" class="wide">^C</button>
+    <button data-text="|">|</button>
+    <button data-text="~">~</button>
+    <button data-text="/">/</button>
+    <button data-text="-">-</button>
+    <button data-text="_">_</button>
+    <button data-key="home">home</button>
+    <button data-key="end">end</button>
+    <button data-key="pgup">pgup</button>
+    <button data-key="pgdn">pgdn</button>
+  </div>
+
   <div id="panel" hidden>
     <div class="panel-inner">
       <h2>Sessions</h2>
@@ -26,6 +56,12 @@
       <div class="row">
         <button id="new-shell">New shell</button>
         <button id="new-claude">New Claude session</button>
+      </div>
+      <div class="row" id="font-row">
+        <span class="label">Text size</span>
+        <button id="font-smaller">A−</button>
+        <span id="font-size">13</span>
+        <button id="font-bigger">A+</button>
       </div>
       <button id="close-panel" class="ghost">Close</button>
     </div>

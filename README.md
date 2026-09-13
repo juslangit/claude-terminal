@@ -6,8 +6,8 @@ Not a chat app that describes what your terminal is doing — the terminal itsel
 full-screen apps, scrollback, Ctrl-C, Esc, Tab, arrows. Claude Code runs in it exactly as it does at
 your desk, and so does `vim`, `git`, `top`, or anything else you'd type.
 
-> **Status: early.** Phase 1 works — a terminal in a desktop browser, driven by the same API the
-> phone will use. The phone UI (key bar, rotation, touch scrollback) is phase 2.
+> **Status: early but usable.** The terminal works on a desktop and on a phone, with a key bar for
+> the keys iOS does not give you. Add it to your Home Screen and it runs as an app.
 
 ## How it works
 
@@ -25,6 +25,12 @@ closing, and the same session can be attached at your desk with `tmux -L claude-
 The server uses **no npm packages** — Node's built-in modules only, including a hand-rolled
 WebSocket implementation. xterm.js is vendored into `public/vendor/`. There is nothing to install
 and nothing to build.
+
+## On your phone
+
+Open the Tailscale URL, then **Share → Add to Home Screen**. It runs full-screen with no browser
+chrome. The key bar along the bottom supplies Esc, Ctrl, Alt, Tab, arrows, Home/End and Page
+Up/Down — tap `ctrl` once to arm it for the next key, twice to lock it on.
 
 ## Requirements
 
@@ -65,10 +71,11 @@ To call the API yourself, pass the token: `curl -H "x-ct-token: $(cat data/token
 ## Testing
 
 ```bash
-node dev/e2e.mjs
+node dev/e2e.mjs     # 36 checks against the server
+node dev/phone.mjs   # 12 checks in Chrome at iPhone size (start the server first)
 ```
 
-Drives the server exactly as the browser does — handshake, typing, UTF-8, Ctrl-C, resize, reconnect,
+`e2e.mjs` drives the server exactly as the browser does — handshake, typing, UTF-8, Ctrl-C, resize, reconnect,
 alternate-screen TUIs, arrow keys, Claude Code itself, and the access-control rules. 32 checks.
 
 ## Layout
@@ -82,6 +89,7 @@ alternate-screen TUIs, arrow keys, Claude Code itself, and the access-control ru
 | `bin/pipe-client.mjs` | Tiny helper tmux runs to forward pane output |
 | `public/` | The web app; `public/vendor/` holds xterm.js |
 | `dev/e2e.mjs` | End-to-end checks |
+| `dev/phone.mjs` | Phone-sized browser checks — key bar, rotation, PWA files |
 
 ## Licence
 

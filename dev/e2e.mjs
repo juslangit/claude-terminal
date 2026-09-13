@@ -131,6 +131,30 @@ try {
     check('no session was created by the rejected requests', before === 0, `${before} sessions`);
   }
 
+  // 3c — a reverse proxy (tailscale serve) may replace the Host header with the
+  // backend address while the browser still sends the public Origin. The check
+  // has to survive that without letting a foreign origin through.
+  {
+    const res = await fetch(BASE + '/api/sessions', {
+      headers: {
+        'x-ct-token': TOKEN,
+        origin: 'https://box.tail1234.ts.net:8443',
+        'x-forwarded-host': 'box.tail1234.ts.net:8443',
+      },
+    });
+    check('accepts a proxied same-origin request', res.status === 200, `status ${res.status}`);
+  }
+  {
+    const res = await fetch(BASE + '/api/sessions', {
+      headers: {
+        'x-ct-token': TOKEN,
+        origin: 'https://evil.example.com',
+        'x-forwarded-host': 'box.tail1234.ts.net:8443',
+      },
+    });
+    check('still refuses a foreign origin behind a proxy', res.status === 403, `status ${res.status}`);
+  }
+
   // 4 — create a session
   const { status, body: session } = await api('POST', '/api/sessions', {
     command: 'bash --norc -i', name: 'e2e', cols: 80, rows: 24,

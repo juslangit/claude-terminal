@@ -38,16 +38,31 @@ Up/Down — tap `ctrl` once to arm it for the next key, twice to lock it on.
 - tmux
 - Tailscale (to reach it from a phone)
 
-## Running it
+## Installing
 
 ```bash
-brew install tmux          # macOS; apt install tmux on Linux/WSL
-node server.mjs
+git clone https://github.com/juslangit/claude-terminal
+cd claude-terminal
+./install.sh
 ```
 
-Then open <http://127.0.0.1:4478>. Set `CT_PORT` to use a different port.
+That checks what it needs, starts the server at login (launchd on macOS, systemd on Linux), and —
+if Tailscale is signed in — serves it to your tailnet and prints the URL to open on your phone.
+Run it again any time; it is idempotent.
 
-To reach it from a phone, put it on your own Tailscale network — see [Security](#security).
+To run it by hand instead:
+
+```bash
+node server.mjs     # http://127.0.0.1:4478, or set CT_PORT
+```
+
+### Removing it
+
+```bash
+launchctl bootout gui/$(id -u)/com.claude-terminal.server     # macOS
+systemctl --user disable --now claude-terminal.service        # Linux
+tailscale serve --https=443 off                               # stop serving it
+```
 
 ## Security
 
@@ -93,4 +108,4 @@ alternate-screen TUIs, arrow keys, Claude Code itself, and the access-control ru
 
 ## Licence
 
-Not yet chosen.
+MIT — see [LICENSE](LICENSE). Do what you like with it.

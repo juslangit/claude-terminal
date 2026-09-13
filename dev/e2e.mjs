@@ -63,7 +63,7 @@ async function api(method, url, body) {
 
 // --- boot the server ---------------------------------------------------------
 
-const server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
+let server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
   env: { ...process.env, CT_PORT: String(PORT) },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -276,6 +276,56 @@ try {
   c3.type('\r');
   await sleep(800);
   check('ctrl-a reaches line editing', !c3.plain.includes('\ntail'), 'line was commented out');
+
+  // 18b — a server restart must not strand running sessions
+  {
+    const { body: keep } = await api('POST', '/api/sessions', {
+      command: 'bash --norc -i', name: 'survivor', cols: 90, rows: 25,
+    });
+    const k = new Client(keep.id, 90, 25);
+    await k.opened;
+    await sleep(700);
+    k.type('MARKER=survived\r');
+    await sleep(800);
+    k.close();
+
+    // Restart the server, exactly as a reboot or a code change would.
+    server.kill('SIGTERM');
+    await sleep(1200);
+    const restarted = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
+      env: { ...process.env, CT_PORT: String(PORT) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    restarted.stdout.on('data', (d) => { serverLog += d; });
+    restarted.stderr.on('data', (d) => { serverLog += d; });
+    server = restarted;
+    for (let i = 0; i < 50; i++) {
+      try { await fetch(BASE + '/'); break; } catch { await sleep(100); }
+    }
+
+    const { body: after } = await api('GET', '/api/sessions');
+    const found = after.sessions.find((x) => x.id === keep.id);
+    check('sessions survive a server restart', !!found, `${after.sessions.length} adopted`);
+    check('adopted session keeps its name', found?.name === 'survivor', found?.name);
+
+    // And it must still be the same shell, with its state.
+    const k2 = new Client(keep.id, 90, 25);
+    await k2.opened;
+    await sleep(800);
+    k2.clear();
+    k2.type('echo "STILL=$MARKER"\r');
+    await sleep(1000);
+    check('adopted session is the same shell', k2.plain.includes('STILL=survived'),
+          JSON.stringify(k2.plain.slice(-50)));
+
+    // 18c — rename
+    await api('PATCH', `/api/sessions/${keep.id}`, { name: 'renamed' });
+    const { body: renamed } = await api('GET', '/api/sessions');
+    check('rename works', renamed.sessions.find((x) => x.id === keep.id)?.name === 'renamed');
+
+    k2.close();
+    await api('DELETE', `/api/sessions/${keep.id}`);
+  }
 
   // 19 — claude itself starts and draws
   const { body: claudeSession } = await api('POST', '/api/sessions', {

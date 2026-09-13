@@ -21,7 +21,11 @@ const PORT = Number(process.env.CT_PORT || 4478);
 // this server must not be directly exposed (D-003, and the top risk in planning).
 const HOST = '127.0.0.1';
 
-const manager = new SessionManager({ rootDir: ROOT, runDir: path.join(DATA, 'run') });
+const manager = new SessionManager({
+  rootDir: ROOT,
+  runDir: path.join(DATA, 'run'),
+  stateFile: path.join(DATA, 'sessions.json'),
+});
 
 fs.mkdirSync(DATA, { recursive: true });
 // Per-install secret. Written to data/token (mode 600) on first run.
@@ -120,6 +124,12 @@ async function handleAPI(req, res, url) {
 
   if (parts[1] === 'sessions' && parts.length === 3 && req.method === 'DELETE') {
     const ok = await manager.remove(parts[2]);
+    return sendJSON(res, ok ? 200 : 404, { ok });
+  }
+
+  if (parts[1] === 'sessions' && parts.length === 3 && req.method === 'PATCH') {
+    const body = await readBody(req);
+    const ok = typeof body.name === 'string' && manager.rename(parts[2], body.name);
     return sendJSON(res, ok ? 200 : 404, { ok });
   }
 
@@ -228,12 +238,17 @@ if (!version) {
   process.exit(1);
 }
 
+// Pick up anything left running by a previous run before accepting requests.
+const adopted = await manager.adoptExisting();
+
 server.listen(PORT, HOST, () => {
   console.log(`claude-terminal on http://${HOST}:${PORT}  (${version})`);
+  if (adopted) console.log(`re-attached to ${adopted} session${adopted === 1 ? '' : 's'} already running`);
 });
 
 async function shutdown(signal) {
   console.log(`\n${signal} — leaving sessions running, closing the server`);
+  manager.detach(); // never take running work down with the server
   server.close();
   process.exit(0);
 }

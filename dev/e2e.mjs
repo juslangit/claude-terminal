@@ -2,6 +2,7 @@
 // Run with the server already listening, or let it start one: `node dev/e2e.mjs`
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +11,8 @@ const PORT = Number(process.env.CT_PORT || 4479);
 const BASE = `http://127.0.0.1:${PORT}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// The server writes this on first run; the browser gets it injected into the page.
+let TOKEN = '';
 const results = [];
 function check(name, ok, detail = '') {
   results.push({ name, ok });
@@ -21,7 +24,7 @@ class Client {
   constructor(sessionId, cols = 80, rows = 24) {
     this.bytes = [];
     this.ready = null;
-    this.ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?session=${sessionId}&cols=${cols}&rows=${rows}`);
+    this.ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?session=${sessionId}&cols=${cols}&rows=${rows}&token=${TOKEN}`);
     this.ws.binaryType = 'arraybuffer';
     // Fail fast: a broken handshake should not hang the suite.
     this.opened = new Promise((resolve, reject) => {
@@ -52,7 +55,7 @@ class Client {
 async function api(method, url, body) {
   const res = await fetch(BASE + url, {
     method,
-    headers: body ? { 'content-type': 'application/json' } : undefined,
+    headers: { 'x-ct-token': TOKEN, ...(body ? { 'content-type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json().catch(() => null) };
@@ -69,8 +72,9 @@ server.stdout.on('data', (d) => { serverLog += d; });
 server.stderr.on('data', (d) => { serverLog += d; });
 
 for (let i = 0; i < 50; i++) {
-  try { await fetch(BASE + '/api/sessions'); break; } catch { await sleep(100); }
+  try { await fetch(BASE + '/'); break; } catch { await sleep(100); }
 }
+TOKEN = fs.readFileSync(path.join(ROOT, 'data', 'token'), 'utf8').trim();
 
 try {
   // 1 — static page is served
@@ -91,6 +95,40 @@ try {
     const res = await fetch(BASE + '/../server.mjs');
     const body = await res.text();
     check('refuses path traversal', !body.includes('SessionManager'), `status ${res.status}`);
+  }
+
+  // 3b — the security checks. Before these existed, any website the user
+  // visited could POST here and run a command on their machine.
+  {
+    const res = await fetch(BASE + '/api/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', origin: 'https://evil.example.com', 'x-ct-token': TOKEN },
+      body: JSON.stringify({ command: 'bash --norc -i', name: 'csrf-probe' }),
+    });
+    check('rejects a cross-origin API request', res.status === 403, `status ${res.status}`);
+  }
+  {
+    const res = await fetch(BASE + '/api/sessions', { headers: { 'x-ct-token': 'wrong'.repeat(10) } });
+    check('rejects a bad token', res.status === 401, `status ${res.status}`);
+  }
+  {
+    const res = await fetch(BASE + '/api/sessions');
+    check('rejects a missing token', res.status === 401, `status ${res.status}`);
+  }
+  {
+    // Nothing may attach to a running session without the token either —
+    // WebSockets are not covered by CORS at all.
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?session=whatever&token=nope`);
+    const outcome = await new Promise((resolve) => {
+      ws.onopen = () => resolve('opened');
+      ws.onerror = () => resolve('refused');
+      setTimeout(() => resolve('timeout'), 3000);
+    });
+    check('refuses a websocket without the token', outcome === 'refused', outcome);
+  }
+  {
+    const before = (await api('GET', '/api/sessions')).body.sessions.length;
+    check('no session was created by the rejected requests', before === 0, `${before} sessions`);
   }
 
   // 4 — create a session

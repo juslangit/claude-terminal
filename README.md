@@ -48,11 +48,19 @@ To reach it from a phone, put it on your own Tailscale network — see [Security
 **This runs arbitrary commands on your computer.** Treat it accordingly.
 
 - The server binds to `127.0.0.1` only. It is never directly exposed, by design.
+- **Requests must come from the app's own page.** Any site you visit can reach `127.0.0.1` from your
+  browser, so the server rejects requests carrying another site's `Origin` — on the API and on the
+  WebSocket, which CORS does not protect at all.
+- **Every request needs a token**, kept in `data/token` (mode 600) and handed to the page when the
+  server serves it. This covers callers that are not browsers, including the case where someone
+  exposes the port beyond loopback by mistake.
 - Reaching it from a phone is Tailscale's job: `tailscale serve` puts it on your private tailnet,
   where only your own signed-in devices can see it.
 - **Never** put this behind a public URL, a port forward, or an ngrok tunnel. There is no
   authentication, because the network is the authentication.
 - There is no hosted version and there never will be. Everyone runs their own.
+
+To call the API yourself, pass the token: `curl -H "x-ct-token: $(cat data/token)" http://127.0.0.1:4478/api/sessions`
 
 ## Testing
 
@@ -61,7 +69,7 @@ node dev/e2e.mjs
 ```
 
 Drives the server exactly as the browser does — handshake, typing, UTF-8, Ctrl-C, resize, reconnect,
-alternate-screen TUIs, arrow keys, and Claude Code itself. 25 checks.
+alternate-screen TUIs, arrow keys, Claude Code itself, and the access-control rules. 32 checks.
 
 ## Layout
 
@@ -70,6 +78,7 @@ alternate-screen TUIs, arrow keys, and Claude Code itself. 25 checks.
 | `server.mjs` | HTTP + WebSocket server, session API |
 | `lib/ws.mjs` | Minimal RFC 6455 WebSocket server |
 | `lib/tmux.mjs` | tmux session management — the pty layer |
+| `lib/auth.mjs` | Origin and token checks |
 | `bin/pipe-client.mjs` | Tiny helper tmux runs to forward pane output |
 | `public/` | The web app; `public/vendor/` holds xterm.js |
 | `dev/e2e.mjs` | End-to-end checks |

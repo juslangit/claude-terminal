@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { accept } from './lib/ws.mjs';
 import { SessionManager, isAvailable } from './lib/tmux.mjs';
+import { ensureToken, originAllowed, tokenMatches, tokenFrom } from './lib/auth.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -21,6 +22,10 @@ const PORT = Number(process.env.CT_PORT || 4478);
 const HOST = '127.0.0.1';
 
 const manager = new SessionManager({ rootDir: ROOT, runDir: path.join(DATA, 'run') });
+
+fs.mkdirSync(DATA, { recursive: true });
+// Per-install secret. Written to data/token (mode 600) on first run.
+const TOKEN = ensureToken(DATA);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -62,6 +67,25 @@ function serveStatic(req, res, urlPath) {
     res.writeHead(403).end('forbidden');
     return;
   }
+
+  // The page is handed the token inline. A site on another origin cannot read
+  // this response, so the token stays out of reach of anything but our own page.
+  if (path.basename(file) === 'index.html') {
+    fs.readFile(file, 'utf8', (err, html) => {
+      if (err) { res.writeHead(404).end('not found'); return; }
+      const injected = html.replace('</head>',
+        `<script>window.__CT_TOKEN__=${JSON.stringify(TOKEN)}</script>\n</head>`);
+      const body = Buffer.from(injected, 'utf8');
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'content-length': body.length,
+        'cache-control': 'no-store',
+      });
+      res.end(body);
+    });
+    return;
+  }
+
   fs.stat(file, (err, stat) => {
     if (err || !stat.isFile()) { res.writeHead(404).end('not found'); return; }
     res.writeHead(200, {
@@ -105,6 +129,10 @@ async function handleAPI(req, res, url) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (url.pathname.startsWith('/api/')) {
+    // A page on another site must never be able to reach this, and neither
+    // should anything without the token. See lib/auth.mjs.
+    if (!originAllowed(req)) return sendJSON(res, 403, { error: 'bad origin' });
+    if (!tokenMatches(TOKEN, tokenFrom(req, url))) return sendJSON(res, 401, { error: 'bad token' });
     handleAPI(req, res, url).catch((err) => {
       console.error('api error:', err);
       sendJSON(res, 500, { error: String(err.message || err) });
@@ -120,6 +148,14 @@ const server = http.createServer((req, res) => {
 server.on('upgrade', (req, socket) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname !== '/ws') { socket.destroy(); return; }
+
+  // WebSockets are not covered by CORS at all, so without these two checks any
+  // page could attach to a running session and type into it.
+  if (!originAllowed(req) || !tokenMatches(TOKEN, tokenFrom(req, url))) {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
 
   const session = manager.get(url.searchParams.get('session') || '');
   const ws = accept(req, socket);
@@ -191,8 +227,6 @@ if (!version) {
   console.error('tmux is not installed, and this needs it. Try: brew install tmux');
   process.exit(1);
 }
-
-fs.mkdirSync(DATA, { recursive: true });
 
 server.listen(PORT, HOST, () => {
   console.log(`claude-terminal on http://${HOST}:${PORT}  (${version})`);

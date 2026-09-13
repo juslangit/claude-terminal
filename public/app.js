@@ -4,6 +4,9 @@
 
 const $ = (sel) => document.querySelector(sel);
 
+// Handed to the page by the server when it served this HTML (see lib/auth.mjs).
+const TOKEN = window.__CT_TOKEN__ || '';
+
 const els = {
   term: $('#term'),
   status: $('#status'),
@@ -118,7 +121,8 @@ function connect(sessionId) {
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const { cols, rows } = state.term;
-  const ws = new WebSocket(`${proto}://${location.host}/ws?session=${encodeURIComponent(sessionId)}&cols=${cols}&rows=${rows}`);
+  const ws = new WebSocket(`${proto}://${location.host}/ws?session=${encodeURIComponent(sessionId)}` +
+    `&cols=${cols}&rows=${rows}&token=${encodeURIComponent(TOKEN)}`);
   ws.binaryType = 'arraybuffer';
   state.ws = ws;
 
@@ -163,7 +167,10 @@ function connect(sessionId) {
 async function api(method, url, body) {
   const res = await fetch(url, {
     method,
-    headers: body ? { 'content-type': 'application/json' } : undefined,
+    headers: {
+      'x-ct-token': TOKEN,
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`${method} ${url} → ${res.status}`);
